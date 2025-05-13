@@ -108,5 +108,5 @@ if __name__ == "__main__":
     plt.title("CPU vs GPU Inference Performance")
     plt.legend()
     #plt.show()
-    plt.savefig("abc.png")
-    files.download("abc.png") 
+    plt.savefig("out.png")
+    files.download("out.png") 
