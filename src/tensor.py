@@ -1,6 +1,20 @@
 import numpy as np
 import cupy as cp
 
+matmul_kernel = cp.RawKernel(r'''
+extern "C" __global__ void matmul(const float* A, const float* B, float* C, int M, int N, int K) {
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+    if (row < M && col < K) {
+        float sum = 0.0;
+        for (int i = 0; i < N; i++) {
+            sum += A[row * N + i] * B[i * K + col];
+        }
+        C[row * K + col] = sum;
+    }
+}
+''', 'matmul')
+
 class Tensor:
     def __init__(self, data, device='CPU', requires_grad=True):
         if device == 'GPU':
@@ -52,7 +66,23 @@ class Tensor:
         other = other if isinstance(other, Tensor) else Tensor(other, device=self.device)
         
         if self.device == 'GPU':
-            #todo
+            M, N = self.data.shape
+            N2, K = other.data.shape
+            
+            # Check dimension compatibility
+            if N != N2:
+                raise ValueError(f"Incompatible dimensions for matrix multiplication: {self.data.shape} and {other.data.shape}")
+                
+            out_data = cp.zeros((M, K), dtype=cp.float32)
+            threads_per_block = (16, 16)
+            blocks_per_grid = ((K + 15) // 16, (M + 15) // 16)
+            
+            # Call the CUDA kernel
+            matmul_kernel((blocks_per_grid), (threads_per_block), (
+                M, N, K, 1.0, self.data, other.data, 1.0, out_data)
+            )
+            
+            out = Tensor(out_data, device='GPU')
         else:
             out = Tensor(self.data @ other.data, device='CPU')
         
