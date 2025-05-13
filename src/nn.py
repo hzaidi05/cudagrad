@@ -3,6 +3,12 @@ import numpy as np
 import cupy as cp
 from tensor import Tensor
 
+def relu(x):
+    return x * (x > 0)
+
+def relu_gpu(x):
+    return cp.maximum(x, 0)
+
 class Module:
     def parameters(self):
         return []
@@ -18,8 +24,10 @@ class Neuron(Module):
         self.b = Tensor(np.zeros((1, 1)), device=device)
     
     def __call__(self, x):
-        out = self.w.T @ x + self.b  # Supports batched inputs
-        return out.relu()
+        #w_transposed = self.w.data.T if self.device == 'CPU' else cp.transpose(self.w.data)
+        out = x @ self.w.data + self.b.data
+
+        return relu(out) if self.device == 'CPU' else relu_gpu(out)
     
     def parameters(self):
         return [self.w, self.b]
