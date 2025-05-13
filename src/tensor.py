@@ -2,15 +2,50 @@ import numpy as np
 import cupy as cp
 
 matmul_kernel = cp.RawKernel(r'''
-extern "C" __global__ void matmul(const float* A, const float* B, float* C, int M, int N, int K) {
-    int row = blockIdx.y * blockDim.y + threadIdx.y;
-    int col = blockIdx.x * blockDim.x + threadIdx.x;
-    if (row < M && col < K) {
-        float sum = 0.0;
-        for (int i = 0; i < N; i++) {
-            sum += A[row * N + i] * B[i * K + col];
+extern "C" __global__ void matmul(const int* __restrict__ a, const int* __restrict__ b, int* c, int N){
+    int row = blockIdx.x;
+    int col = blockIdx.y;
+    int TM = 4; //todo: make modifiable
+    __shared__ int sA[blocksize*blocksize];
+    __shared__ int sB[blocksize*blocksize];
+
+    a += row * blocksize * N;
+    b += col * blocksize;
+    c += row * blocksize * N + col * blocksize;
+
+    int tRow = threadIdx.x / blocksize;
+    int tCol = threadIdx.x % blocksize;
+
+    int tmp[TM] = 0;
+    int Btmp = 0;
+    //if check
+    //load into shared mem
+
+    for(int i=0; i<N; i+= blocksize){
+        sA[tRow * blocksize + tCol] = A[trow * N + tCol];
+        sB[tRow * blocksize + tCol] = B[trow * N + tCol];
+    
+        __syncthreads();
+
+        //do dot product
+
+        for(int i = 0; i<blocksize; i++){
+            //tmp += sA[tRow * blocksize + i] * sB[i*blocksize + tCol];
+            Btmp = sB[i*blocksize + tCol];
+            for(j=0; j<TM; j++){
+                result[j] += Btmp * sA[(tRow * TM + j)*blocksize + i];
+            }
         }
-        C[row * K + col] = sum;
+
+        __syncthreads();
+
+        //move to next point
+        A += blocksize;
+        B += blocksize * N;
+    }
+
+    for(i=0; i<TM; i++){
+        C[(tRow * TM + i)*blocksize + tCol] = tmp[i];
     }
 }
 ''', 'matmul')
