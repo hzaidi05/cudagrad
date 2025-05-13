@@ -18,58 +18,15 @@ class Neuron(Module):
         self.b = Tensor(np.zeros((1, 1)), device=device)
     
     def __call__(self, x):
-        # Convert x to a Tensor if it's not already one
         if not isinstance(x, Tensor):
             x = Tensor(x, device=self.device)
             
-        # Proper tensor operations - maintain the computational graph
         act = x @ self.w + self.b
         
-        # Return a proper ReLU that maintains the computational graph
-        return self.relu(act)
-    
-    def relu(self, x):
-        # Create a new tensor with ReLU activation
-        out = Tensor(
-            cp.maximum(x.data, 0) if self.device == 'GPU' else np.maximum(x.data, 0),
-            device=self.device
-        )
-        
-        # Set up backward function for ReLU
-        def _backward():
-            # ReLU gradient: 1 where input > 0, 0 elsewhere
-            mask = (x.data > 0).astype(x.data.dtype)
-            x.grad += mask * out.grad
-            
-        out._backward = _backward
-        out._prev = {x}
-        return out
+        return x.relu(act)
     
     def parameters(self):
         return [self.w, self.b]
-
-class Dense(Module):
-    def __init__(self, in_features, out_features, device='CPU'):
-        self.device = device
-        
-        # Initialize with correct shape: (in_features, out_features)
-        if device == 'GPU':
-            self.W = Tensor(cp.random.randn(in_features, out_features) * 0.1, device=device)
-            self.b = Tensor(cp.zeros(out_features), device=device)
-        else:
-            self.W = Tensor(np.random.randn(in_features, out_features) * 0.1, device=device)
-            self.b = Tensor(np.zeros(out_features), device=device)
-    
-    def __call__(self, x):
-        # Make sure x is a Tensor
-        if not isinstance(x, Tensor):
-            x = Tensor(x, device=self.device)
-            
-        # Linear transformation
-        return x @ self.W + self.b
-    
-    def parameters(self):
-        return [self.W, self.b]
 
 class Layer(Module):
 
@@ -84,35 +41,53 @@ class Layer(Module):
         return [p for n in self.neurons for p in n.parameters()]
 
 
-
+class MLP(Module):
     def __init__(self, nin, nouts, device='CPU'):
         self.device = device
         layer_sizes = [nin] + nouts
         self.layers = []
         
-        # Create layers with proper dimensions
         for i in range(len(layer_sizes) - 1):
             in_features = layer_sizes[i]
             out_features = layer_sizes[i+1]
             
-            # Each layer has weights of shape (in_features, out_features)
             self.layers.append(Dense(in_features, out_features, device=device))
     
     def __call__(self, x):
-        # Convert input if needed
         if not isinstance(x, Tensor):
             x = Tensor(x, device=self.device)
             
-        # Pass through layers with activation
         for i, layer in enumerate(self.layers):
             x = layer(x)
-            # Apply ReLU to all but the last layer
             if i < len(self.layers) - 1:
-                x = relu(x)
+                x = x.relu()
         return x
     
     def parameters(self):
         return [p for layer in self.layers for p in layer.parameters()]
+
+# A simple dense layer that handles dimensions correctly
+class Dense(Module):
+    def __init__(self, in_features, out_features, device='CPU'):
+        self.device = device
+        
+        # Initialize with correct shape: (in_features, out_features)
+        if device == 'GPU':
+            self.W = Tensor(cp.random.randn(in_features, out_features) * 0.1, device=device)
+            self.b = Tensor(cp.zeros(out_features), device=device)
+        else:
+            self.W = Tensor(np.random.randn(in_features, out_features) * 0.1, device=device)
+            self.b = Tensor(np.zeros(out_features), device=device)
+    
+    def __call__(self, x):
+        if not isinstance(x, Tensor):
+            x = Tensor(x, device=self.device)
+            
+        # Linear transformation
+        return x @ self.W + self.b
+    
+    def parameters(self):
+        return [self.W, self.b]
 
 # Example Usage
 if __name__ == "__main__":
